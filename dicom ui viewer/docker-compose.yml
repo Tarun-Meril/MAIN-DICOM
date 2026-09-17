@@ -1,0 +1,98 @@
+
+services:
+  db-postgres:
+    image: postgres:16-alpine
+    container_name: medview_db
+    environment:
+      POSTGRES_DB: medview_pro
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d medview_pro"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  cache-redis:
+    image: redis:7-alpine
+    container_name: medview_redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+
+
+#   api-backend:
+#     build: ./backend
+#     container_name: medview_backend
+#     volumes:
+#       - ./backend:/workspace
+#     env_file:
+#       - ./backend/.env.production
+#     ports:
+#       - "8000:8000"
+#     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+#     depends_on:
+#       db-postgres:
+#         condition: service_healthy
+#       cache-redis:
+#         condition: service_healthy
+
+  celery-worker:
+    build: ./backend
+    container_name: medview_celery_worker
+    volumes:
+      - ./backend:/workspace
+    env_file:
+      - ./backend/.env.production
+    command: celery -A app.worker worker --loglevel=info -Q default,thumbnail_queue,ai_queue,upload_queue,export_queue
+    depends_on:
+      db-postgres:
+        condition: service_healthy
+      cache-redis:
+        condition: service_healthy
+
+  celery-beat:
+    build: ./backend
+    container_name: medview_celery_beat
+    volumes:
+      - ./backend:/workspace
+    env_file:
+      - ./backend/.env.production
+    command: celery -A app.worker beat --loglevel=info
+    depends_on:
+      db-postgres:
+        condition: service_healthy
+      cache-redis:
+        condition: service_healthy
+
+#   web-frontend:
+#     image: node:20-alpine
+#     container_name: medview_frontend
+#     working_dir: /app
+#     volumes:
+#       - ./frontend:/app
+#
+#     ports:
+#       - "5174:5174"
+#     environment:
+#       - NODE_ENV=development
+#       - ELECTRON_SKIP_BINARY_DOWNLOAD=1
+#     env_file:
+#       - ./frontend/.env
+#     command: npm run dev:renderer -- --host
+#     depends_on:
+#
+#       - api-backend
+
+
+volumes:
+  postgres_data:
